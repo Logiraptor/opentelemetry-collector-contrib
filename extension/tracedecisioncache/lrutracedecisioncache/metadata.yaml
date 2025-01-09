@@ -1,0 +1,13 @@
+type: tracedecisioncache
+
+status:
+  class: extension
+  stability:
+    alpha: [extension]
+  distributions: [contrib]
+  codeowners:
+    active: [Logiraptor]
+
+tests:
+  skip_lifecycle: true
+  skip_shutdown: true
