@@ -21,8 +21,8 @@ import (
 	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 
+	"github.com/open-telemetry/opentelemetry-collector-contrib/extension/tracedecisioncache"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/internal/coreinternal/timeutils"
-	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/cache"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/idbatcher"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/metadata"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/sampling"
@@ -48,15 +48,19 @@ type tailSamplingSpanProcessor struct {
 	telemetry *metadata.TelemetryBuilder
 	logger    *zap.Logger
 
-	nextConsumer      consumer.Traces
-	maxNumTraces      uint64
-	policies          []*policy
-	idToTrace         sync.Map
-	policyTicker      timeutils.TTicker
-	tickerFrequency   time.Duration
-	decisionBatcher   idbatcher.Batcher
-	sampledIDCache    cache.Cache[bool]
-	nonSampledIDCache cache.Cache[bool]
+	nextConsumer    consumer.Traces
+	maxNumTraces    uint64
+	policies        []*policy
+	idToTrace       sync.Map
+	policyTicker    timeutils.TTicker
+	tickerFrequency time.Duration
+	decisionBatcher idbatcher.Batcher
+
+	sampledCacheComponentID    *component.ID
+	nonSampledCacheComponentID *component.ID
+
+	sampledIDCache    tracedecisioncache.Cache[bool]
+	nonSampledIDCache tracedecisioncache.Cache[bool]
 	deleteChan        chan pcommon.TraceID
 	numTracesOnMap    *atomic.Uint64
 }
@@ -84,42 +88,29 @@ type Option func(*tailSamplingSpanProcessor)
 
 // newTracesProcessor returns a processor.TracesProcessor that will perform tail sampling according to the given
 // configuration.
-func newTracesProcessor(ctx context.Context, set processor.Settings, nextConsumer consumer.Traces, cfg Config) (processor.Traces, error) {
+func newTracesProcessor(ctx context.Context, set processor.Settings, nextConsumer consumer.Traces, cfg Config, opts ...Option) (processor.Traces, error) {
 	telemetrySettings := set.TelemetrySettings
 	telemetry, err := metadata.NewTelemetryBuilder(telemetrySettings)
 	if err != nil {
 		return nil, err
 	}
-	nopCache := cache.NewNopDecisionCache[bool]()
-	sampledDecisions := nopCache
-	nonSampledDecisions := nopCache
-	if cfg.DecisionCache.SampledCacheSize > 0 {
-		sampledDecisions, err = cache.NewLRUDecisionCache[bool](cfg.DecisionCache.SampledCacheSize)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if cfg.DecisionCache.NonSampledCacheSize > 0 {
-		nonSampledDecisions, err = cache.NewLRUDecisionCache[bool](cfg.DecisionCache.NonSampledCacheSize)
-		if err != nil {
-			return nil, err
-		}
-	}
 
 	tsp := &tailSamplingSpanProcessor{
-		ctx:               ctx,
-		telemetry:         telemetry,
-		nextConsumer:      nextConsumer,
-		maxNumTraces:      cfg.NumTraces,
-		sampledIDCache:    sampledDecisions,
-		nonSampledIDCache: nonSampledDecisions,
-		logger:            telemetrySettings.Logger,
-		numTracesOnMap:    &atomic.Uint64{},
-		deleteChan:        make(chan pcommon.TraceID, cfg.NumTraces),
+		ctx:                        ctx,
+		telemetry:                  telemetry,
+		nextConsumer:               nextConsumer,
+		maxNumTraces:               cfg.NumTraces,
+		logger:                     telemetrySettings.Logger,
+		sampledCacheComponentID:    cfg.SampledCacheID,
+		nonSampledCacheComponentID: cfg.NonSampledCacheID,
+		sampledIDCache:             tracedecisioncache.NewNopDecisionCache[bool](),
+		nonSampledIDCache:          tracedecisioncache.NewNopDecisionCache[bool](),
+		numTracesOnMap:             &atomic.Uint64{},
+		deleteChan:                 make(chan pcommon.TraceID, cfg.NumTraces),
 	}
 	tsp.policyTicker = &timeutils.PolicyTicker{OnTickFunc: tsp.samplingPolicyOnTick}
 
-	for _, opt := range cfg.Options {
+	for _, opt := range opts {
 		opt(tsp)
 	}
 
@@ -191,15 +182,15 @@ func withTickerFrequency(frequency time.Duration) Option {
 	}
 }
 
-// WithSampledDecisionCache sets the cache which the processor uses to store recently sampled trace IDs.
-func WithSampledDecisionCache(c cache.Cache[bool]) Option {
+// withSampledDecisionCache sets the cache which the processor uses to store recently sampled trace IDs.
+func withSampledDecisionCache(c tracedecisioncache.Cache[bool]) Option {
 	return func(tsp *tailSamplingSpanProcessor) {
 		tsp.sampledIDCache = c
 	}
 }
 
-// WithNonSampledDecisionCache sets the cache which the processor uses to store recently non-sampled trace IDs.
-func WithNonSampledDecisionCache(c cache.Cache[bool]) Option {
+// withSampledDecisionCache sets the cache which the processor uses to store recently sampled trace IDs.
+func withNonSampledDecisionCache(c tracedecisioncache.Cache[bool]) Option {
 	return func(tsp *tailSamplingSpanProcessor) {
 		tsp.nonSampledIDCache = c
 	}
@@ -471,8 +462,26 @@ func (tsp *tailSamplingSpanProcessor) Capabilities() consumer.Capabilities {
 }
 
 // Start is invoked during service startup.
-func (tsp *tailSamplingSpanProcessor) Start(context.Context, component.Host) error {
+func (tsp *tailSamplingSpanProcessor) Start(_ context.Context, host component.Host) error {
 	tsp.policyTicker.Start(tsp.tickerFrequency)
+
+	extensions := host.GetExtensions()
+	if tsp.sampledCacheComponentID != nil {
+		if ext, ok := extensions[*tsp.sampledCacheComponentID]; ok {
+			if extension, ok := ext.(tracedecisioncache.CacheExtension); ok {
+				tsp.sampledIDCache = tracedecisioncache.NewTypedCache(tracedecisioncache.NewJsonCodec[bool](), extension)
+			}
+		}
+	}
+
+	if tsp.nonSampledCacheComponentID != nil {
+		if ext, ok := extensions[*tsp.nonSampledCacheComponentID]; ok {
+			if extension, ok := ext.(tracedecisioncache.CacheExtension); ok {
+				tsp.nonSampledIDCache = tracedecisioncache.NewTypedCache(tracedecisioncache.NewJsonCodec[bool](), extension)
+			}
+		}
+	}
+
 	return nil
 }
 

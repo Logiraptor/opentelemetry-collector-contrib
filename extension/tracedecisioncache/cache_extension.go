@@ -4,6 +4,8 @@
 package tracedecisioncache // import "github.com/open-telemetry/opentelemetry-collector-contrib/extension/cache"
 
 import (
+	"encoding/json"
+
 	"go.opentelemetry.io/collector/extension"
 	"go.opentelemetry.io/collector/pdata/pcommon"
 )
@@ -33,8 +35,24 @@ type Codec[V any] interface {
 	Decode(data []byte) (V, error)
 }
 
-func NewTypedCache[V any](size int, codec Codec[V], cache Cache[[]byte]) (Cache[V], error) {
-	return &typedCache[V]{cache: cache, codec: codec}, nil
+func NewTypedCache[V any](codec Codec[V], cache Cache[[]byte]) Cache[V] {
+	return &typedCache[V]{cache: cache, codec: codec}
+}
+
+func NewJsonCodec[V any]() Codec[V] {
+	return jsonCodec[V]{}
+}
+
+type jsonCodec[V any] struct{}
+
+func (jsonCodec[V]) Encode(v V) ([]byte, error) {
+	return json.Marshal(v)
+}
+
+func (jsonCodec[V]) Decode(data []byte) (V, error) {
+	var v V
+	err := json.Unmarshal(data, &v)
+	return v, err
 }
 
 type typedCache[V any] struct {
