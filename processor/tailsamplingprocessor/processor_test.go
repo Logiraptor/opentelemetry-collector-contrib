@@ -20,7 +20,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zaptest/observer"
 
@@ -125,7 +124,7 @@ func TestTraceIntegrity(t *testing.T) {
 	mpe1 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	cfg := Config{

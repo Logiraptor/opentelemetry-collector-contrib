@@ -14,7 +14,6 @@ import (
 	"go.opentelemetry.io/collector/pdata/ptrace"
 	"go.opentelemetry.io/collector/processor/processortest"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/metric"
 
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/cache"
 	"github.com/open-telemetry/opentelemetry-collector-contrib/processor/tailsamplingprocessor/internal/metadata"
@@ -28,7 +27,7 @@ func TestSamplingPolicyTypicalPath(t *testing.T) {
 	mpe1 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	cfg := Config{
@@ -75,7 +74,7 @@ func TestSamplingPolicyInvertSampled(t *testing.T) {
 	mpe1 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	cfg := Config{
@@ -123,8 +122,8 @@ func TestSamplingMultiplePolicies(t *testing.T) {
 	mpe2 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
 	}
 
 	cfg := Config{
@@ -178,8 +177,8 @@ func TestSamplingMultiplePolicies_WithRecordPolicy(t *testing.T) {
 	mpe2 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
 	}
 
 	cfg := Config{
@@ -228,7 +227,7 @@ func TestSamplingPolicyDecisionNotSampled(t *testing.T) {
 	mpe1 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	cfg := Config{
@@ -278,7 +277,7 @@ func TestSamplingPolicyDecisionNotSampled_WithRecordPolicy(t *testing.T) {
 	mpe1 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	cfg := Config{
@@ -320,8 +319,8 @@ func TestSamplingPolicyDecisionInvertNotSampled(t *testing.T) {
 	mpe2 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
 	}
 
 	cfg := Config{
@@ -375,8 +374,8 @@ func TestSamplingPolicyDecisionInvertNotSampled_WithRecordPolicy(t *testing.T) {
 	mpe2 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
 	}
 
 	cfg := Config{
@@ -419,8 +418,8 @@ func TestLateArrivingSpansAssignedOriginalDecision(t *testing.T) {
 	mpe2 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
 	}
 
 	cfg := Config{
@@ -489,7 +488,7 @@ func TestLateArrivingSpanUsesDecisionCache(t *testing.T) {
 
 	mpe := &mockPolicyEvaluator{}
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	// Use this instead of the default no-op cache
@@ -566,7 +565,7 @@ func TestLateSpanUsesNonSampledDecisionCache(t *testing.T) {
 
 	mpe := &mockPolicyEvaluator{}
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
+		{name: "mock-policy-1", evaluator: mpe, attribute: attribute.String("policy", "mock-policy-1")},
 	}
 
 	// Use this instead of the default no-op cache
@@ -646,9 +645,9 @@ func TestSampleOnFirstMatch(t *testing.T) {
 	mpe3 := &mockPolicyEvaluator{}
 
 	policies := []*policy{
-		{name: "mock-policy-1", evaluator: mpe1, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-1"))},
-		{name: "mock-policy-2", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-2"))},
-		{name: "mock-policy-3", evaluator: mpe2, attribute: metric.WithAttributes(attribute.String("policy", "mock-policy-3"))},
+		{name: "mock-policy-1", evaluator: mpe1, attribute: attribute.String("policy", "mock-policy-1")},
+		{name: "mock-policy-2", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-2")},
+		{name: "mock-policy-3", evaluator: mpe2, attribute: attribute.String("policy", "mock-policy-3")},
 	}
 
 	cfg := Config{

@@ -39,7 +39,21 @@ type policy struct {
 	// evaluator that decides if a trace is sampled or not by this policy instance.
 	evaluator sampling.PolicyEvaluator
 	// attribute to use in the telemetry to denote the policy.
-	attribute metric.MeasurementOption
+	attribute attribute.KeyValue
+	// lazyAttributes is a map of decision to attribute. It is used to avoid creating a new attribute.KeyValue for each decision.
+	lazyAttributes map[sampling.Decision]metric.MeasurementOption
+}
+
+func (p *policy) attributesForDecision(decision sampling.Decision) metric.MeasurementOption {
+	if p.lazyAttributes == nil {
+		p.lazyAttributes = make(map[sampling.Decision]metric.MeasurementOption)
+	}
+	attr := p.lazyAttributes[decision]
+	if attr == nil {
+		attr = metric.WithAttributeSet(attribute.NewSet(p.attribute, decisionToAttributeKV[decision]))
+	}
+	p.lazyAttributes[decision] = attr
+	return attr
 }
 
 // tailSamplingSpanProcessor handles the incoming trace data and uses the given sampling
@@ -77,14 +91,23 @@ type spanAndScope struct {
 }
 
 var (
-	attrSampledTrue     = metric.WithAttributes(attribute.String("sampled", "true"))
-	attrSampledFalse    = metric.WithAttributes(attribute.String("sampled", "false"))
-	decisionToAttribute = map[sampling.Decision]metric.MeasurementOption{
+	attrSampledTrue       = attribute.String("sampled", "true")
+	attrSampledFalse      = attribute.String("sampled", "false")
+	attrSetSampledTrue    = attribute.NewSet(attrSampledTrue)
+	attrSetSampledFalse   = attribute.NewSet(attrSampledFalse)
+	decisionToAttributeKV = map[sampling.Decision]attribute.KeyValue{
 		sampling.Sampled:          attrSampledTrue,
-		sampling.NotSampled:       attrSampledFalse,
+		sampling.NotSampled:       attrSampledTrue,
 		sampling.InvertNotSampled: attrSampledFalse,
 		sampling.InvertSampled:    attrSampledTrue,
 		sampling.Dropped:          attrSampledFalse,
+	}
+	decisionToAttribute = map[sampling.Decision]metric.MeasurementOption{
+		sampling.Sampled:          metric.WithAttributeSet(attribute.NewSet(decisionToAttributeKV[sampling.Sampled])),
+		sampling.NotSampled:       metric.WithAttributeSet(attribute.NewSet(decisionToAttributeKV[sampling.NotSampled])),
+		sampling.InvertNotSampled: metric.WithAttributeSet(attribute.NewSet(decisionToAttributeKV[sampling.InvertNotSampled])),
+		sampling.InvertSampled:    metric.WithAttributeSet(attribute.NewSet(decisionToAttributeKV[sampling.InvertSampled])),
+		sampling.Dropped:          metric.WithAttributeSet(attribute.NewSet(decisionToAttributeKV[sampling.Dropped])),
 	}
 )
 
@@ -297,7 +320,7 @@ func (tsp *tailSamplingSpanProcessor) loadSamplingPolicy(cfgs []PolicyCfg) error
 		p := &policy{
 			name:      cfg.Name,
 			evaluator: eval,
-			attribute: metric.WithAttributes(attribute.String("policy", uniquePolicyName)),
+			attribute: attribute.String("policy", uniquePolicyName),
 		}
 
 		if cfg.Type == Drop {
@@ -419,7 +442,7 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sa
 	for _, p := range tsp.policies {
 		decision, err := p.evaluator.Evaluate(ctx, id, trace)
 		latency := time.Since(startTime)
-		tsp.telemetry.ProcessorTailSamplingSamplingDecisionLatency.Record(ctx, int64(latency/time.Microsecond), p.attribute)
+		tsp.telemetry.ProcessorTailSamplingSamplingDecisionLatency.Record(ctx, int64(latency/time.Microsecond), metric.WithAttributes(p.attribute))
 
 		if err != nil {
 			if samplingDecisions[sampling.Error] == nil {
@@ -430,10 +453,11 @@ func (tsp *tailSamplingSpanProcessor) makeDecision(id pcommon.TraceID, trace *sa
 			continue
 		}
 
-		tsp.telemetry.ProcessorTailSamplingCountTracesSampled.Add(ctx, 1, p.attribute, decisionToAttribute[decision])
+		attrs := p.attributesForDecision(decision)
+		tsp.telemetry.ProcessorTailSamplingCountTracesSampled.Add(ctx, 1, attrs)
 
 		if telemetry.IsMetricStatCountSpansSampledEnabled() {
-			tsp.telemetry.ProcessorTailSamplingCountSpansSampled.Add(ctx, trace.SpanCount.Load(), p.attribute, decisionToAttribute[decision])
+			tsp.telemetry.ProcessorTailSamplingCountSpansSampled.Add(ctx, trace.SpanCount.Load(), attrs)
 		}
 
 		// We associate the first policy with the sampling decision to understand what policy sampled a span
@@ -523,14 +547,14 @@ func (tsp *tailSamplingSpanProcessor) processTraces(resourceSpans ptrace.Resourc
 			appendToTraces(traceTd, resourceSpans, spans)
 			tsp.releaseSampledTrace(tsp.ctx, id, traceTd)
 			tsp.telemetry.ProcessorTailSamplingEarlyReleasesFromCacheDecision.
-				Add(tsp.ctx, int64(len(spans)), attrSampledTrue)
+				Add(tsp.ctx, int64(len(spans)), metric.WithAttributeSet(attrSetSampledTrue))
 			continue
 		}
 		// If the trace ID is in the non-sampled cache, short circuit the decision
 		if _, ok := tsp.nonSampledIDCache.Get(id); ok {
 			tsp.logger.Debug("Trace ID is in the non-sampled cache", zap.Stringer("id", id))
 			tsp.telemetry.ProcessorTailSamplingEarlyReleasesFromCacheDecision.
-				Add(tsp.ctx, int64(len(spans)), attrSampledFalse)
+				Add(tsp.ctx, int64(len(spans)), metric.WithAttributeSet(attrSetSampledFalse))
 			continue
 		}
 
